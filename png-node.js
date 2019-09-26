@@ -21,6 +21,150 @@
 const fs = require('fs');
 const zlib = require('zlib');
 
+function readPixels(
+  data,
+  pixels,
+  scanlineLength,
+  pixelBytes,
+  height,
+  pos,
+  onRow
+) {
+  const { length } = data;
+  let row = 0;
+  let c = 0;
+
+  while (row < height && pos < length) {
+    var byte, col, i, left, upper;
+    switch (data[pos++]) {
+      case 0: // None
+        for (i = 0; i < scanlineLength; i++) {
+          pixels[c++] = data[pos++];
+        }
+        break;
+
+      case 1: // Sub
+        for (i = 0; i < scanlineLength; i++) {
+          byte = data[pos++];
+          left = i < pixelBytes ? 0 : pixels[c - pixelBytes];
+          pixels[c++] = (byte + left) % 256;
+        }
+        break;
+
+      case 2: // Up
+        for (i = 0; i < scanlineLength; i++) {
+          byte = data[pos++];
+          col = (i - (i % pixelBytes)) / pixelBytes;
+          upper =
+            row &&
+            pixels[
+              (row - 1) * scanlineLength + col * pixelBytes + (i % pixelBytes)
+            ];
+          pixels[c++] = (upper + byte) % 256;
+        }
+        break;
+
+      case 3: // Average
+        for (i = 0; i < scanlineLength; i++) {
+          byte = data[pos++];
+          col = (i - (i % pixelBytes)) / pixelBytes;
+          left = i < pixelBytes ? 0 : pixels[c - pixelBytes];
+          upper =
+            row &&
+            pixels[
+              (row - 1) * scanlineLength + col * pixelBytes + (i % pixelBytes)
+            ];
+          pixels[c++] = (byte + Math.floor((left + upper) / 2)) % 256;
+        }
+        break;
+
+      case 4: // Paeth
+        for (i = 0; i < scanlineLength; i++) {
+          var paeth, upperLeft;
+          byte = data[pos++];
+          col = (i - (i % pixelBytes)) / pixelBytes;
+          left = i < pixelBytes ? 0 : pixels[c - pixelBytes];
+
+          if (row === 0) {
+            upper = upperLeft = 0;
+          } else {
+            upper =
+              pixels[
+                (row - 1) * scanlineLength + col * pixelBytes + (i % pixelBytes)
+              ];
+            upperLeft =
+              col &&
+              pixels[
+                (row - 1) * scanlineLength +
+                  (col - 1) * pixelBytes +
+                  (i % pixelBytes)
+              ];
+          }
+
+          const p = left + upper - upperLeft;
+          const pa = Math.abs(p - left);
+          const pb = Math.abs(p - upper);
+          const pc = Math.abs(p - upperLeft);
+
+          if (pa <= pb && pa <= pc) {
+            paeth = left;
+          } else if (pb <= pc) {
+            paeth = upper;
+          } else {
+            paeth = upperLeft;
+          }
+
+          pixels[c++] = (byte + paeth) % 256;
+        }
+        break;
+
+      default:
+        throw new Error(`Invalid filter algorithm: ${data[pos - 1]}`);
+    }
+
+    if (onRow) onRow(row);
+
+    row++;
+  }
+
+  return pos;
+}
+
+function readInterlacedPixels(
+  data,
+  pixels,
+  pixelBytes,
+  width,
+  height,
+  x0,
+  y0,
+  dx,
+  dy,
+  pos
+) {
+  const w = Math.ceil((width - x0) / dx);
+  const h = Math.ceil((height - y0) / dy);
+  const scanlineLength = pixelBytes * w;
+  const passPixels = new Buffer(scanlineLength * h);
+  return readPixels(
+    data,
+    passPixels,
+    scanlineLength,
+    pixelBytes,
+    h,
+    pos,
+    row => {
+      let imagePos = ((y0 + row * dy) * width + x0) * pixelBytes;
+      let passPos = row * scanlineLength;
+      for (let i = 0; i < w; i++) {
+        for (let j = 0; j < pixelBytes; j++)
+          pixels[imagePos++] = passPixels[passPos++];
+        imagePos += (dx - 1) * pixelBytes;
+      }
+    }
+  );
+}
+
 module.exports = class PNG {
   static decode(path, fn) {
     return fs.readFile(path, function(err, file) {
@@ -185,110 +329,101 @@ module.exports = class PNG {
         throw err;
       }
 
+      const { width, height } = this;
+
       const pixelBytes = this.pixelBitlength / 8;
-      const scanlineLength = pixelBytes * this.width;
+      const scanlineLength = pixelBytes * width;
 
-      const pixels = new Buffer(scanlineLength * this.height);
-      const { length } = data;
-      let row = 0;
-      let pos = 0;
-      let c = 0;
+      const pixels = new Buffer(scanlineLength * height);
 
-      while (pos < length) {
-        var byte, col, i, left, upper;
-        switch (data[pos++]) {
-          case 0: // None
-            for (i = 0; i < scanlineLength; i++) {
-              pixels[c++] = data[pos++];
-            }
-            break;
-
-          case 1: // Sub
-            for (i = 0; i < scanlineLength; i++) {
-              byte = data[pos++];
-              left = i < pixelBytes ? 0 : pixels[c - pixelBytes];
-              pixels[c++] = (byte + left) % 256;
-            }
-            break;
-
-          case 2: // Up
-            for (i = 0; i < scanlineLength; i++) {
-              byte = data[pos++];
-              col = (i - (i % pixelBytes)) / pixelBytes;
-              upper =
-                row &&
-                pixels[
-                  (row - 1) * scanlineLength +
-                    col * pixelBytes +
-                    (i % pixelBytes)
-                ];
-              pixels[c++] = (upper + byte) % 256;
-            }
-            break;
-
-          case 3: // Average
-            for (i = 0; i < scanlineLength; i++) {
-              byte = data[pos++];
-              col = (i - (i % pixelBytes)) / pixelBytes;
-              left = i < pixelBytes ? 0 : pixels[c - pixelBytes];
-              upper =
-                row &&
-                pixels[
-                  (row - 1) * scanlineLength +
-                    col * pixelBytes +
-                    (i % pixelBytes)
-                ];
-              pixels[c++] = (byte + Math.floor((left + upper) / 2)) % 256;
-            }
-            break;
-
-          case 4: // Paeth
-            for (i = 0; i < scanlineLength; i++) {
-              var paeth, upperLeft;
-              byte = data[pos++];
-              col = (i - (i % pixelBytes)) / pixelBytes;
-              left = i < pixelBytes ? 0 : pixels[c - pixelBytes];
-
-              if (row === 0) {
-                upper = upperLeft = 0;
-              } else {
-                upper =
-                  pixels[
-                    (row - 1) * scanlineLength +
-                      col * pixelBytes +
-                      (i % pixelBytes)
-                  ];
-                upperLeft =
-                  col &&
-                  pixels[
-                    (row - 1) * scanlineLength +
-                      (col - 1) * pixelBytes +
-                      (i % pixelBytes)
-                  ];
-              }
-
-              const p = left + upper - upperLeft;
-              const pa = Math.abs(p - left);
-              const pb = Math.abs(p - upper);
-              const pc = Math.abs(p - upperLeft);
-
-              if (pa <= pb && pa <= pc) {
-                paeth = left;
-              } else if (pb <= pc) {
-                paeth = upper;
-              } else {
-                paeth = upperLeft;
-              }
-
-              pixels[c++] = (byte + paeth) % 256;
-            }
-            break;
-
-          default:
-            throw new Error(`Invalid filter algorithm: ${data[pos - 1]}`);
-        }
-
-        row++;
+      if (this.interlaceMethod === 1) {
+        let pos = 0;
+        pos = readInterlacedPixels(
+          data,
+          pixels,
+          pixelBytes,
+          width,
+          height,
+          0,
+          0,
+          8,
+          8,
+          pos
+        );
+        pos = readInterlacedPixels(
+          data,
+          pixels,
+          pixelBytes,
+          width,
+          height,
+          4,
+          0,
+          8,
+          8,
+          pos
+        );
+        pos = readInterlacedPixels(
+          data,
+          pixels,
+          pixelBytes,
+          width,
+          height,
+          0,
+          4,
+          4,
+          8,
+          pos
+        );
+        pos = readInterlacedPixels(
+          data,
+          pixels,
+          pixelBytes,
+          width,
+          height,
+          2,
+          0,
+          4,
+          4,
+          pos
+        );
+        pos = readInterlacedPixels(
+          data,
+          pixels,
+          pixelBytes,
+          width,
+          height,
+          0,
+          2,
+          2,
+          4,
+          pos
+        );
+        pos = readInterlacedPixels(
+          data,
+          pixels,
+          pixelBytes,
+          width,
+          height,
+          1,
+          0,
+          2,
+          2,
+          pos
+        );
+        pos = readInterlacedPixels(
+          data,
+          pixels,
+          pixelBytes,
+          width,
+          height,
+          0,
+          1,
+          1,
+          2,
+          pos
+        );
+      } else {
+        readPixels(data, pixels, scanlineLength, pixelBytes, height, 0);
       }
 
       return fn(pixels);
