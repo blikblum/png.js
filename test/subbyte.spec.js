@@ -39,7 +39,14 @@ function makePng({ width, height, bitDepth, rows }) {
 }
 
 function decode(buffer) {
-  return new Promise((resolve) => new PNGNode(buffer).decodePixels(resolve));
+  return new Promise((resolve, reject) => {
+    new PNGNode(buffer).decodePixels((err, pixels) => {
+      if (err) {
+        return reject(err);
+      }
+      resolve(pixels);
+    });
+  });
 }
 
 describe('sub-byte bit depths', () => {

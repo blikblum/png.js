@@ -41,7 +41,14 @@ export function benchFixtures() {
 }
 
 export function decodePixels(png) {
-  return new Promise(resolve => png.decodePixels(resolve));
+  return new Promise((resolve, reject) => {
+    png.decodePixels((err, pixels) => {
+      if (err) {
+        return reject(err);
+      }
+      resolve(pixels);
+    });
+  });
 }
 
 export const mb = bytes => (bytes / 1024 / 1024).toFixed(2) + ' MB';

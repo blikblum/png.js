@@ -201,8 +201,18 @@ class PNG {
       throw new Error('PNG.decode not available in browser build');
     } else {
       return fs.readFile(path, function(err, file) {
-        const png = new PNG(file);
-        return png.decode(pixels => fn(pixels));
+        if (err) {
+          return fn(err);
+        }
+
+        let png;
+        try {
+          png = new PNG(file);
+        } catch (err) {
+          return fn(err);
+        }
+
+        return png.decode(fn);
       });
     }
   }
@@ -412,10 +422,17 @@ class PNG {
 
     return inflate(input, (err, data) => {
       if (err) {
-        throw err;
+        return fn(err);
       }
 
-      return fn(decodePixelsData(meta, data));
+      let pixels;
+      try {
+        pixels = decodePixelsData(meta, data);
+      } catch (err) {
+        return fn(err);
+      }
+
+      return fn(null, pixels);
     });
   }
 
@@ -485,10 +502,20 @@ class PNG {
   }
 
   decode(fn) {
-    const ret = new Uint8Array(this.width * this.height * 4);
-    return this.decodePixels(pixels => {
+    let ret;
+    try {
+      ret = new Uint8Array(this.width * this.height * 4);
+    } catch (err) {
+      return fn(err);
+    }
+
+    return this.decodePixels((err, pixels) => {
+      if (err) {
+        return fn(err);
+      }
+
       this.copyToImageData(ret, pixels);
-      return fn(ret);
+      return fn(null, ret);
     });
   }
 }

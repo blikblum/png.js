@@ -25,14 +25,23 @@ Install the module using npm
 Require the module and decode a PNG
 
     var PNG = require('png-js');
-    PNG.decode('some.png', function(pixels) {
+    PNG.decode('some.png', function(err, pixels) {
+        if (err) {
+            console.error('Could not decode PNG:', err);
+            return;
+        }
         // pixels is a 1d array (in rgba order) of decoded pixel data
     });
 
+All asynchronous decoding methods (`PNG.decode`, `png.decode`, and `png.decodePixels`) use error-first callbacks:
+`callback(null, pixels)` on success, or `callback(err)` on failure. Errors include file-read failures such as `ENOENT`,
+invalid PNG data, and decompression failures. Update existing one-argument callbacks to accept `(err, pixels)`.
+
 You can also call `PNG.load` if you want to load the PNG (but not decode the pixels) synchronously. If you already
 have the PNG data in a buffer, simply use `new PNG(buffer)`. In both of these cases, you need to call `png.decode`
-yourself which passes your callback the decoded pixels as a buffer. If you already have a buffer you want the pixels
-copied to, call `copyToImageData` with your buffer and the decoded pixels as returned from `decodePixels`.
+yourself which passes your callback `(err, pixels)`, with decoded RGBA pixels as a `Uint8Array`. If you already have
+a buffer you want the pixels copied to, call `copyToImageData` with your buffer and the decoded pixels as returned
+from `decodePixels`.
 
 For synchronous pixel decoding, call `decodePixelsSync` on a PNG instance. It returns a `Uint8Array` containing the
 decoded pixel data before conversion to RGBA.

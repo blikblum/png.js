@@ -5,11 +5,14 @@ const files = fs.readdirSync('test/images');
 
 async function getPixels(Ctor, fileName) {
   const image = new Ctor(fs.readFileSync(`test/images/${fileName}`));
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     Ctor === PNGNode
-      ? image.decodePixels((pixels) =>
-          resolve(Buffer.isBuffer(pixels) ? pixels : Buffer.from(pixels)),
-        )
+      ? image.decodePixels((err, pixels) => {
+          if (err) {
+            return reject(err);
+          }
+          resolve(Buffer.isBuffer(pixels) ? pixels : Buffer.from(pixels));
+        })
       : resolve(image.decodePixels());
   });
 }

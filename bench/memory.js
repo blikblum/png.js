@@ -40,7 +40,10 @@ function peakRSS(file, decode) {
     const PNG = require(${JSON.stringify(libPath)});
     const buffer = require('fs').readFileSync(${JSON.stringify(file)});
     const mode = ${JSON.stringify(decode)};
-    const done = () => console.log(process.resourceUsage().maxRSS);
+    const done = err => {
+      if (err) throw err;
+      console.log(process.resourceUsage().maxRSS);
+    };
     if (mode === 'read') done();
     else {
       const png = new PNG(buffer);
@@ -76,8 +79,11 @@ async function measure(name, file, readBuffer) {
   const retainedAfterDrop = gcUsage() - baseline;
 
   let pixelBytes = 0;
-  await new Promise(resolve => {
-    png.decodePixels(pixels => {
+  await new Promise((resolve, reject) => {
+    png.decodePixels((err, pixels) => {
+      if (err) {
+        return reject(err);
+      }
       pixelBytes = pixels.length;
       resolve();
     });
