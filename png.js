@@ -18,7 +18,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-window.PNG = (function() {
+window.PNG = (function () {
   let APNG_DISPOSE_OP_NONE = 0;
   let APNG_DISPOSE_OP_BACKGROUND = 1;
   let APNG_DISPOSE_OP_PREVIOUS = 2;
@@ -26,7 +26,7 @@ window.PNG = (function() {
   let APNG_BLEND_OP_OVER = 1;
   let scratchCanvas = document.createElement('canvas');
   let scratchCtx = scratchCanvas.getContext('2d');
-  let makeImage = function(imageData) {
+  let makeImage = function (imageData) {
     scratchCtx.width = imageData.width;
     scratchCtx.height = imageData.height;
     scratchCtx.clearRect(0, 0, imageData.width, imageData.height);
@@ -95,7 +95,7 @@ window.PNG = (function() {
             this.animation = {
               numFrames: this.readUInt32(),
               numPlays: this.readUInt32() || Infinity,
-              frames: []
+              frames: [],
             };
             break;
 
@@ -113,7 +113,7 @@ window.PNG = (function() {
               width: this.readUInt32(),
               height: this.readUInt32(),
               xOffset: this.readUInt32(),
-              yOffset: this.readUInt32()
+              yOffset: this.readUInt32(),
             };
 
             var delayNum = this.readUInt16();
@@ -174,7 +174,7 @@ window.PNG = (function() {
             var key = String.fromCharCode.apply(String, text.slice(0, index));
             this.text[key] = String.fromCharCode.apply(
               String,
-              text.slice(index + 1)
+              text.slice(index + 1),
             );
             break;
 
