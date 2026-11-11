@@ -85,11 +85,21 @@ window.PNG = (function () {
       let frame = null;
 
       while (true) {
+        const chunkStart = this.pos;
+        if (this.pos + 8 > this.data.length) {
+          throw new Error('Incomplete or corrupt PNG file');
+        }
+
         var data;
         let chunkSize = this.readUInt32();
         let section = '';
         for (i = 0; i < 4; i++) {
           section += String.fromCharCode(this.data[this.pos++]);
+        }
+
+        // Validate the payload and CRC before reading, allocating, or seeking.
+        if (chunkSize > this.data.length - this.pos - 4) {
+          throw new Error('Incomplete or corrupt PNG file');
         }
 
         switch (section) {
@@ -240,7 +250,7 @@ window.PNG = (function () {
 
         this.pos += 4; // Skip the CRC
 
-        if (this.pos > this.data.length) {
+        if (this.pos <= chunkStart || this.pos > this.data.length) {
           throw new Error('Incomplete or corrupt PNG file');
         }
       }
@@ -259,7 +269,7 @@ window.PNG = (function () {
       const b2 = this.data[this.pos++] << 16;
       const b3 = this.data[this.pos++] << 8;
       const b4 = this.data[this.pos++];
-      return b1 | b2 | b3 | b4;
+      return (b1 | b2 | b3 | b4) >>> 0;
     }
 
     readUInt16() {

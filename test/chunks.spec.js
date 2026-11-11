@@ -1,5 +1,8 @@
 import fs from 'fs';
 import PNGNode from '../lib/png-js.cjs';
+import PNGNodeESM from '../lib/png-js.js';
+import PNGBrowser from '../lib/png-js.browser.cjs';
+import PNGBrowserESM from '../lib/png-js.browser.js';
 
 // Chunk-level coverage the image fixtures can't provide: every checked-in
 // PNG has a single IDAT chunk and no tEXt chunk, so these tests synthesize
@@ -40,15 +43,17 @@ function chunk(type, payload) {
   return Buffer.concat([head, payload, crc]);
 }
 
-function withTextChunk(payload) {
+function withChunk(type, payload) {
   const buffer = validBuffer();
   const idat = findChunk(buffer, 'IDAT');
   return Buffer.concat([
     buffer.subarray(0, idat),
-    chunk('tEXt', payload),
+    chunk(type, payload),
     buffer.subarray(idat),
   ]);
 }
+
+const withTextChunk = (payload) => withChunk('tEXt', payload);
 
 // Replaces the fixture's single IDAT chunk with one chunk per span between
 // consecutive split points (so [n] makes two chunks and [n, n] makes three,
@@ -74,6 +79,39 @@ const idatSize = (() => {
   const buffer = validBuffer();
   return buffer.readUInt32BE(findChunk(buffer, 'IDAT'));
 })();
+
+describe.each([
+  ['node CJS', PNGNode],
+  ['node ESM', PNGNodeESM],
+  ['packaged browser CJS', PNGBrowser],
+  ['packaged browser ESM', PNGBrowserESM],
+  ['standalone browser', PNG],
+])('%s valid chunks', (_name, Ctor) => {
+  test.each([Buffer.alloc(0), Buffer.from('unknown chunk payload')])(
+    'skips an unknown ancillary chunk with %j payload',
+    async (payload) => {
+      const original = new Ctor(validBuffer());
+      const modified = new Ctor(withChunk('zzZz', payload));
+      expect(Buffer.from(modified.imgData)).toEqual(
+        Buffer.from(original.imgData),
+      );
+      expect(Buffer.from(await modified.decodePixels())).toEqual(
+        Buffer.from(await original.decodePixels()),
+      );
+    },
+  );
+
+  test('tolerates zero-length IDAT chunks', async () => {
+    const original = new Ctor(validBuffer());
+    const modified = new Ctor(splitIdat([1, 1, idatSize >> 1]));
+    expect(Buffer.from(modified.imgData)).toEqual(
+      Buffer.from(original.imgData),
+    );
+    expect(Buffer.from(await modified.decodePixels())).toEqual(
+      Buffer.from(await original.decodePixels()),
+    );
+  });
+});
 
 describe('multiple IDAT chunks', () => {
   test('node: split streams concatenate to the single-chunk result', () => {
@@ -105,7 +143,7 @@ describe('multiple IDAT chunks', () => {
 });
 
 // The chunked latin1 decoder only exists in the packaged build, so these
-// cover PNGNode only (matching malformed.spec.js).
+// cover PNGNode only.
 describe('tEXt chunks', () => {
   test('parses a key/value pair', () => {
     const png = new PNGNode(withTextChunk(Buffer.from('Title\0Hello, png.js')));
